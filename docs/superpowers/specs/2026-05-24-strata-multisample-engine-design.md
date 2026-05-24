@@ -53,8 +53,9 @@ Samples live in one folder. The root note is encoded in the filename suffix:
 - Raw MIDI form:  `name_60.wav`
 
 `lib/strata.lua` scans the folder, parses each filename's trailing token into a MIDI
-number (note-name parser supports `A`–`G`, `#`/`b`, octave `-1`..`9`, middle C = C3 = MIDI 60
-per norns/MIDI convention). Files that don't parse are skipped with a warning.
+number (note-name parser supports `A`–`G`, `#`/`b`, octave `-1`..`9`, middle C = C4 = MIDI 60,
+A4 = 69 — the standard MIDI / scientific-pitch convention, `midi = (octave+1)*12 + semitone`).
+Files that don't parse are skipped with a warning.
 
 ### Load protocol (Lua → SC)
 1. `engine.clear()` — free all buffers, reset the store.
@@ -159,8 +160,8 @@ per file, and return a count of loaded zones (or nil + message on failure).
 
 - **SC compile gate:** engine must load without errors after SYSTEM > RESTART.
 - **Lua syntax gate:** `luac -p` on `strata.lua` and `lib/strata.lua`.
-- **Note-name parser:** unit-test the parser table (`C3 -> 60`, `A4 -> 69`, `F#2 -> 42`,
-  raw `60 -> 60`) in a small standalone Lua harness on the Mac.
+- **Note-name parser:** unit-test the parser (`C4 -> 60`, `A4 -> 69`, `F#2 -> 42`,
+  `C-1 -> 0`, raw `60 -> 60`, garbage `-> nil`) in a small standalone Lua harness on the Mac.
 - **Hardware playtest:** load a small instrument folder on a norns, confirm pitched
   polyphonic playback, looping while held, and clean release. (Deferred to user per the
   norns playtest workflow.)
