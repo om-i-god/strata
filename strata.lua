@@ -1,12 +1,12 @@
 -- strata
 -- multisample instrument
 --
--- E1: octave
+-- E1: octave  E2: instrument
 -- K2/K3: test notes
 -- MIDI: play
 --
--- samples: dust/audio/strata/
--- named name_C4.wav etc.
+-- samples: dust/audio/strata/<inst>/
+-- named name_C4.wav (or name_60.wav)
 
 engine.name = "Strata"
 
@@ -20,8 +20,10 @@ local amp_level = 0
 local octave = 0
 local n_zones = 0
 local status = "loading..."
+local instruments = {}
+local inst_name = ""
 
-local DEFAULT_FOLDER = _path.audio .. "strata/"
+local ROOT_DIR = _path.audio .. "strata/"
 
 local function load(folder)
   local count, err = inst:load_folder(folder)
@@ -33,6 +35,18 @@ local function load(folder)
     status = "ready"
   end
   redraw()
+end
+
+-- find instrument subfolders under dust/audio/strata/ (util.scandir
+-- appends "/" to directories).
+local function scan_instruments()
+  instruments = {}
+  local entries = util.scandir(ROOT_DIR)
+  if entries then
+    for _, e in ipairs(entries) do
+      if e:sub(-1) == "/" then table.insert(instruments, e:sub(1, -2)) end
+    end
+  end
 end
 
 function init()
@@ -53,13 +67,23 @@ function init()
   params:set_action("amp", function(x) inst:set("amp", x) end)
   params:add_control("pan", "pan", controlspec.new(-1, 1, "lin", 0, 0))
   params:set_action("pan", function(x) inst:set("pan", x) end)
+
+  scan_instruments()
+  if #instruments > 0 then
+    params:add_option("instrument", "instrument", instruments, 1)
+    params:set_action("instrument", function(i)
+      inst_name = instruments[i]
+      load(ROOT_DIR .. inst_name .. "/")
+    end)
+  end
   params:bang()
 
   amp_poll = poll.set("amp_out", function(v) amp_level = v end)
   amp_poll.time = 1 / 15
   amp_poll:start()
 
-  load(DEFAULT_FOLDER)
+  -- no subfolders: fall back to loading the top-level folder directly
+  if #instruments == 0 then load(ROOT_DIR) end
 
   m = midi.connect()
   m.event = function(data)
@@ -87,6 +111,8 @@ function enc(n, d)
   if n == 1 then
     octave = util.clamp(octave + d, -3, 3)
     redraw()
+  elseif n == 2 then
+    if #instruments > 0 then params:delta("instrument", d) end
   end
 end
 
@@ -96,11 +122,13 @@ function redraw()
   screen.move(0, 10)
   screen.text("STRATA")
   screen.level(4)
-  screen.move(0, 24)
+  screen.move(0, 20)
+  screen.text(inst_name ~= "" and inst_name or "(top-level)")
+  screen.move(0, 30)
   screen.text("zones: " .. n_zones)
-  screen.move(0, 34)
+  screen.move(0, 40)
   screen.text("octave: " .. octave)
-  screen.move(0, 44)
+  screen.move(0, 50)
   screen.text(status)
   screen.level(15)
   screen.rect(0, 59, util.clamp(amp_level, 0, 1) * 127, 4)
