@@ -74,12 +74,12 @@ Engine_Strata : CroneEngine {
       };
     });
 
-    // Note off: release the voice for this note.
+    // Note off: release the voice. The voice's onFree removes it from the
+    // dict once its release tail finishes, so releasing voices stay counted.
     this.addCommand(\note_off, "i", { arg msg;
       var note = msg[1].asInteger;
       if (voices[note].notNil) {
         voices[note].set(\gate, 0);
-        voices.removeAt(note);
       };
     });
 
