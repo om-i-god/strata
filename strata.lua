@@ -22,6 +22,7 @@ local n_zones = 0
 local status = "loading..."
 local instruments = {}
 local inst_name = ""
+local midi_devices = {}
 
 local ROOT_DIR = _path.audio .. "strata/"
 
@@ -47,6 +48,26 @@ local function scan_instruments()
       if e:sub(-1) == "/" then table.insert(instruments, e:sub(1, -2)) end
     end
   end
+end
+
+-- incoming MIDI: filtered by the selected channel ("all" or 1-16).
+-- note_on with velocity 0 is treated as note_off (running-status convention).
+local function midi_event(data)
+  local msg = midi.to_msg(data)
+  local ch = params:get("midi_channel") -- 1 = all, n>1 = channel (n-1)
+  if ch > 1 and msg.ch ~= (ch - 1) then return end
+  if msg.type == "note_on" and msg.vel > 0 then
+    inst:on({ midi = msg.note, velocity = msg.vel })
+  elseif msg.type == "note_off" or (msg.type == "note_on" and msg.vel == 0) then
+    inst:off({ midi = msg.note })
+  end
+end
+
+-- (re)bind the MIDI handler to the chosen vport, detaching the previous one.
+local function setup_midi(port)
+  if m then m.event = nil end
+  m = midi.connect(port)
+  m.event = midi_event
 end
 
 function init()
@@ -76,6 +97,18 @@ function init()
       load(ROOT_DIR .. inst_name .. "/")
     end)
   end
+
+  -- MIDI input selection
+  params:add_separator("midi in")
+  local channels = { "all" }
+  for i = 1, 16 do channels[i + 1] = tostring(i) end
+  params:add_option("midi_channel", "midi channel", channels, 1)
+  for i = 1, #midi.vports do
+    midi_devices[i] = i .. ": " .. (midi.vports[i].name or "----")
+  end
+  params:add_option("midi_device", "midi device", midi_devices, 1)
+  params:set_action("midi_device", function(i) setup_midi(i) end)
+
   params:bang()
 
   amp_poll = poll.set("amp_out", function(v) amp_level = v end)
@@ -84,16 +117,6 @@ function init()
 
   -- no subfolders: fall back to loading the top-level folder directly
   if #instruments == 0 then load(ROOT_DIR) end
-
-  m = midi.connect()
-  m.event = function(data)
-    local msg = midi.to_msg(data)
-    if msg.type == "note_on" then
-      inst:on({ midi = msg.note, velocity = msg.vel })
-    elseif msg.type == "note_off" then
-      inst:off({ midi = msg.note })
-    end
-  end
 end
 
 function key(n, z)
