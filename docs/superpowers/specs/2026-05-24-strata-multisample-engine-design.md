@@ -91,7 +91,7 @@ PlayBuf.ar(2, buf, rate, loop: 1)
 - **Loop while held:** `loop: 1` loops the whole buffer. Note-off lowers the gate, the
   release tail plays, then `doneAction: 2` frees the synth.
 - Args: `out, buf, rate, amp, velocity, attack, decay, sustain, release, cutoff, pan, gate`.
-- `rate` and `cutoff` are `.lag`'d to avoid zipper noise.
+- `cutoff` is `.lag`'d to avoid zipper noise. `rate` is fixed per voice (set once at spawn), so it is not lagged.
 
 ### Voice management
 - A dict keyed by MIDI note → Synth node.
