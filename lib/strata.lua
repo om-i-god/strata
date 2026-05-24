@@ -13,6 +13,7 @@ function Strata.parse_note(token)
   local lower = token:lower()
   local num = tonumber(lower)
   if num ~= nil then
+    if num ~= math.floor(num) then return nil end  -- reject non-integer raw MIDI
     num = math.floor(num)
     if num >= 0 and num <= 127 then return num end
     return nil
