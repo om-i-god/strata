@@ -73,6 +73,18 @@ end
 function init()
   inst = Strata:new()
 
+  -- OSC input: notes pushed from another norns/script over the network
+  -- /strata/noteon {note,vel(1-127)}  /strata/noteoff {note}  /strata/alloff
+  osc.event = function(path, args)
+    if path == "/strata/noteon" then
+      inst:on({ midi = args[1], velocity = args[2] })
+    elseif path == "/strata/noteoff" then
+      inst:off({ midi = args[1] })
+    elseif path == "/strata/alloff" then
+      engine.all_off()
+    end
+  end
+
   params:add_separator("strata")
   params:add_control("attack", "attack", controlspec.new(0.001, 5, "exp", 0, 0.01, "s"))
   params:set_action("attack", function(x) inst:set("attack", x) end)
@@ -160,5 +172,6 @@ function redraw()
 end
 
 function cleanup()
+  osc.event = nil
   if inst then engine.all_off() end
 end
