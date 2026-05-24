@@ -63,4 +63,32 @@ function Strata:off(note)
   engine.note_off(note.midi)
 end
 
+-- Scan a folder, clear the engine, and load every recognised sample.
+-- A sample is recognised if it has an audio extension AND its filename
+-- ends in a parseable root note (e.g. piano_C4.wav, name_60.wav).
+-- Returns the number of zones loaded, or nil + message on failure.
+function Strata:load_folder(path)
+  if path:sub(-1) ~= "/" then path = path .. "/" end
+  local entries = util.scandir(path)
+  if entries == nil or #entries == 0 then
+    return nil, "no samples in " .. path
+  end
+  engine.clear()
+  local count = 0
+  for _, fn in ipairs(entries) do
+    local ext = fn:lower()
+    if ext:match("%.wav$") or ext:match("%.aif$") or ext:match("%.aiff$") or ext:match("%.flac$") then
+      local root = Strata.parse_filename(fn)
+      if root ~= nil then
+        engine.read(path .. fn, root)
+        count = count + 1
+      else
+        print("strata: skipping (no root note in name): " .. fn)
+      end
+    end
+  end
+  if count == 0 then return nil, "no rooted samples in " .. path end
+  return count
+end
+
 return Strata
