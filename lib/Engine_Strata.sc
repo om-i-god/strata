@@ -59,7 +59,10 @@ Engine_Strata : CroneEngine {
         bestDist = (note - best[\root]).abs;
         samples.do { arg s;
           var d = (note - s[\root]).abs;
-          if (d < bestDist) { bestDist = d; best = s; };
+          // strictly closer, or equally close but a lower root (deterministic tie-break)
+          if ((d < bestDist) or: { (d == bestDist) and: { s[\root] < best[\root] } }) {
+            bestDist = d; best = s;
+          };
         };
         rate = 2 ** ((note - best[\root]) / 12);
         if (voices[note].notNil) { voices[note].set(\gate, 0); };
