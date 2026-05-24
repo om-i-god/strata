@@ -37,4 +37,30 @@ function Strata.parse_filename(filename)
   return Strata.parse_note(token)
 end
 
+-- Create a new instrument instance. Engine holds the audio state;
+-- the instance is a thin handle so multiple scripts can share patterns.
+function Strata:new()
+  local inst = setmetatable({}, Strata)
+  return inst
+end
+
+-- Set a global engine parameter by name (attack, decay, sustain, release,
+-- cutoff, amp, pan). Silently ignores unknown names.
+function Strata:set(name, value)
+  if engine[name] ~= nil then
+    engine[name](value)
+  end
+end
+
+-- Trigger a note. arg table: {midi=<0-127>, velocity=<0-127, default 100>}.
+function Strata:on(note)
+  local vel = (note.velocity or 100) / 127
+  engine.note_on(note.midi, vel)
+end
+
+-- Release a note. arg table: {midi=<0-127>}.
+function Strata:off(note)
+  engine.note_off(note.midi)
+end
+
 return Strata
