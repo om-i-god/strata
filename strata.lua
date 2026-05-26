@@ -23,6 +23,7 @@ local status = "loading..."
 local instruments = {}
 local inst_name = ""
 local midi_devices = {}
+local single_sample_path = nil
 
 local ROOT_DIR = _path.audio .. "strata/"
 
@@ -101,11 +102,39 @@ function init()
   params:add_control("pan", "pan", controlspec.new(-1, 1, "lin", 0, 0))
   params:set_action("pan", function(x) inst:set("pan", x) end)
 
+  -- loop on/off (one-shot vs loop-while-held)
+  params:add_option("loop", "loop", { "off", "on" }, 1)
+  params:set_action("loop", function(v) inst:set("loop", v == 2 and 1 or 0) end)
+
+  -- single-sample mode: root frequency, then the file picker
+  params:add_control("sample_root_hz", "sample root",
+    controlspec.new(20, 8000, "exp", 0, 440, "Hz"))
+  params:set_action("sample_root_hz", function(hz)
+    if single_sample_path then
+      inst:load_sample(single_sample_path, Strata.hz_to_midi(hz))
+    end
+  end)
+  params:add_file("sample", "sample", _path.audio)
+  params:set_action("sample", function(file)
+    local lf = type(file) == "string" and file:lower() or ""
+    if not (lf:match("%.wav$") or lf:match("%.aif$")
+         or lf:match("%.aiff$") or lf:match("%.flac$")) then return end
+    single_sample_path = file
+    n_zones = 1
+    inst_name = file:match("[^/]+$") or file
+    local note = Strata.parse_filename(inst_name)
+    if note then params:set("sample_root_hz", Strata.midi_to_hz(note), true) end
+    inst:load_sample(file, Strata.hz_to_midi(params:get("sample_root_hz")))
+    status = "ready"
+    redraw()
+  end)
+
   scan_instruments()
   if #instruments > 0 then
     params:add_option("instrument", "instrument", instruments, 1)
     params:set_action("instrument", function(i)
       inst_name = instruments[i]
+      single_sample_path = nil
       load(ROOT_DIR .. inst_name .. "/")
     end)
   end
@@ -162,7 +191,11 @@ function redraw()
   screen.move(0, 30)
   screen.text("zones: " .. n_zones)
   screen.move(0, 40)
-  screen.text("octave: " .. octave)
+  if single_sample_path then
+    screen.text("root: " .. math.floor(params:get("sample_root_hz")) .. " hz")
+  else
+    screen.text("octave: " .. octave)
+  end
   screen.move(0, 50)
   screen.text(status)
   screen.level(15)
