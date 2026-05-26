@@ -1,12 +1,10 @@
 -- strata
--- multisample instrument
+-- sample instrument
 --
--- E1: octave  E2: instrument
--- K2/K3: test notes
--- MIDI: play
+-- E1: octave   K2/K3: test notes   MIDI: play
 --
--- samples: dust/audio/strata/<inst>/
--- named name_C4.wav (or name_60.wav)
+-- PARAMS > sample: pick any .wav (the instrument is the selected sample)
+-- default: dust/audio/strata/kurzweil_strings/kurzweil_strings_78.wav
 
 engine.name = "Strata"
 
@@ -18,38 +16,13 @@ local amp_poll
 local m
 local amp_level = 0
 local octave = 0
-local n_zones = 0
 local status = "loading..."
-local instruments = {}
 local inst_name = ""
 local midi_devices = {}
 local single_sample_path = nil
 
 local ROOT_DIR = _path.audio .. "strata/"
-
-local function load(folder)
-  local count, err = inst:load_folder(folder)
-  if count == nil then
-    n_zones = 0
-    status = tostring(err)
-  else
-    n_zones = count
-    status = "ready"
-  end
-  redraw()
-end
-
--- find instrument subfolders under dust/audio/strata/ (util.scandir
--- appends "/" to directories).
-local function scan_instruments()
-  instruments = {}
-  local entries = util.scandir(ROOT_DIR)
-  if entries then
-    for _, e in ipairs(entries) do
-      if e:sub(-1) == "/" then table.insert(instruments, e:sub(1, -2)) end
-    end
-  end
-end
+local DEFAULT_SAMPLE = ROOT_DIR .. "kurzweil_strings/kurzweil_strings_78.wav"
 
 -- incoming MIDI: filtered by the selected channel ("all" or 1-16).
 -- note_on with velocity 0 is treated as note_off (running-status convention).
@@ -114,13 +87,12 @@ function init()
       inst:load_sample(single_sample_path, Strata.hz_to_midi(hz))
     end
   end)
-  params:add_file("sample", "sample", _path.audio)
+  params:add_file("sample", "sample", DEFAULT_SAMPLE)
   params:set_action("sample", function(file)
     local lf = type(file) == "string" and file:lower() or ""
     if not (lf:match("%.wav$") or lf:match("%.aif$")
          or lf:match("%.aiff$") or lf:match("%.flac$")) then return end
     single_sample_path = file
-    n_zones = 1
     inst_name = file:match("[^/]+$") or file
     local note = Strata.parse_filename(inst_name)
     if note then params:set("sample_root_hz", Strata.midi_to_hz(note), true) end
@@ -128,16 +100,6 @@ function init()
     status = "ready"
     redraw()
   end)
-
-  scan_instruments()
-  if #instruments > 0 then
-    params:add_option("instrument", "instrument", instruments, 1)
-    params:set_action("instrument", function(i)
-      inst_name = instruments[i]
-      single_sample_path = nil
-      load(ROOT_DIR .. inst_name .. "/")
-    end)
-  end
 
   -- MIDI input selection
   params:add_separator("midi in")
@@ -155,9 +117,6 @@ function init()
   amp_poll = poll.set("amp_out", function(v) amp_level = v end)
   amp_poll.time = 1 / 15
   amp_poll:start()
-
-  -- no subfolders: fall back to loading the top-level folder directly
-  if #instruments == 0 then load(ROOT_DIR) end
 end
 
 function key(n, z)
@@ -175,8 +134,6 @@ function enc(n, d)
   if n == 1 then
     octave = util.clamp(octave + d, -3, 3)
     redraw()
-  elseif n == 2 then
-    if #instruments > 0 then params:delta("instrument", d) end
   end
 end
 
@@ -187,15 +144,11 @@ function redraw()
   screen.text("STRATA")
   screen.level(4)
   screen.move(0, 20)
-  screen.text(inst_name ~= "" and inst_name or "(top-level)")
+  screen.text(inst_name ~= "" and inst_name or "(no sample)")
   screen.move(0, 30)
-  screen.text("zones: " .. n_zones)
+  screen.text("root: " .. math.floor(params:get("sample_root_hz")) .. " hz")
   screen.move(0, 40)
-  if single_sample_path then
-    screen.text("root: " .. math.floor(params:get("sample_root_hz")) .. " hz")
-  else
-    screen.text("octave: " .. octave)
-  end
+  screen.text("octave: " .. octave)
   screen.move(0, 50)
   screen.text(status)
   screen.level(15)
