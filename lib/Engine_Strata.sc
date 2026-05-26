@@ -14,16 +14,16 @@ Engine_Strata : CroneEngine {
     voices = Dictionary.new;
     params = IdentityDictionary[
       \attack -> 0.01, \decay -> 0.3, \sustain -> 0.9, \release -> 0.5,
-      \cutoff -> 20000, \amp -> 0.7, \pan -> 0.0
+      \cutoff -> 20000, \amp -> 0.7, \pan -> 0.0, \loop -> 0
     ];
 
     SynthDef(\strata_voice, {
       arg out, buf, rate = 1, vel = 1, amp = 0.7,
           attack = 0.01, decay = 0.3, sustain = 0.9, release = 0.5,
-          cutoff = 20000, pan = 0.0, gate = 1;
+          cutoff = 20000, pan = 0.0, loop = 0, gate = 1;
       var sig, env;
       env = EnvGen.kr(Env.adsr(attack, decay, sustain, release), gate, doneAction: 2);
-      sig = PlayBuf.ar(2, buf, rate * BufRateScale.kr(buf), loop: 1);
+      sig = PlayBuf.ar(2, buf, rate * BufRateScale.kr(buf), loop: loop);
       sig = LPF.ar(sig, Lag.kr(cutoff, 0.05));
       sig = sig * env * amp * vel;
       sig = Balance2.ar(sig[0], sig[1], pan);
@@ -70,7 +70,7 @@ Engine_Strata : CroneEngine {
           \out, context.out_b.index, \buf, best[\buf], \rate, rate, \vel, vel,
           \amp, params[\amp], \attack, params[\attack], \decay, params[\decay],
           \sustain, params[\sustain], \release, params[\release],
-          \cutoff, params[\cutoff], \pan, params[\pan]
+          \cutoff, params[\cutoff], \pan, params[\pan], \loop, params[\loop]
         ], context.xg);
         voices[note] = syn;
         syn.onFree({ if (voices[note] == syn) { voices.removeAt(note) } });
@@ -93,7 +93,7 @@ Engine_Strata : CroneEngine {
     });
 
     // Global params applied to new voices.
-    [\attack, \decay, \sustain, \release, \cutoff, \amp, \pan].do { arg name;
+    [\attack, \decay, \sustain, \release, \cutoff, \amp, \pan, \loop].do { arg name;
       this.addCommand(name, "f", { arg msg; params[name] = msg[1]; });
     };
 
