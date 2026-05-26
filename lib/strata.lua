@@ -91,4 +91,19 @@ function Strata:load_folder(path)
   return count
 end
 
+-- A4 = 440 Hz = MIDI 69. Result may be fractional (engine root is a float).
+function Strata.hz_to_midi(hz)
+  return 69 + 12 * math.log(hz / 440, 2)
+end
+
+function Strata.midi_to_hz(midi)
+  return 440 * 2 ^ ((midi - 69) / 12)
+end
+
+-- Load a single sample as the whole instrument, re-pitched from root_midi.
+function Strata:load_sample(path, root_midi)
+  engine.clear()
+  engine.read(path, root_midi)
+end
+
 return Strata

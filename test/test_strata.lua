@@ -32,5 +32,22 @@ check("fn raw midi", Strata.parse_filename("name_60.wav"), 60)
 check("fn sharp aif", Strata.parse_filename("inst_F#2.aif"), 42)
 check("fn no root", Strata.parse_filename("noroot.wav"), nil)
 
+local function approx(desc, got, want, tol)
+  tol = tol or 0.01
+  if type(got) == "number" and math.abs(got - want) <= tol then
+    pass = pass + 1
+  else
+    fail = fail + 1
+    print(string.format("FAIL %s: got %s want ~%s", desc, tostring(got), tostring(want)))
+  end
+end
+
+approx("hz_to_midi 440", Strata.hz_to_midi(440), 69)
+approx("hz_to_midi 261.6256", Strata.hz_to_midi(261.6256), 60)
+approx("hz_to_midi 880", Strata.hz_to_midi(880), 81)
+approx("midi_to_hz 69", Strata.midi_to_hz(69), 440)
+approx("midi_to_hz 60", Strata.midi_to_hz(60), 261.63, 0.1)
+approx("roundtrip 53.7hz", Strata.hz_to_midi(Strata.midi_to_hz(Strata.hz_to_midi(53.7))), Strata.hz_to_midi(53.7))
+
 print(string.format("\n%d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end
