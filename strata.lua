@@ -1,7 +1,7 @@
 -- strata
 -- sample instrument
 --
--- E1: octave   K2/K3: test notes   MIDI: play
+-- E1: octave (transposes everything)   MIDI / OSC: play
 --
 -- PARAMS > sample: pick any .wav (the instrument is the selected sample)
 -- default: dust/audio/strata/kurzweil_strings/kurzweil_strings_78.wav
@@ -20,9 +20,25 @@ local status = "loading..."
 local inst_name = ""
 local midi_devices = {}
 local single_sample_path = nil
+local held = {}
 
 local ROOT_DIR = _path.audio .. "strata/"
 local DEFAULT_SAMPLE = ROOT_DIR .. "kurzweil_strings/kurzweil_strings_78.wav"
+
+-- note in/out, transposed by `octave` (all sources). held[] remembers the
+-- transposed note per incoming note, so note-off still matches if octave
+-- changed mid-hold (avoids stuck notes).
+local function note_on(note, vel)
+  local t = util.clamp(note + octave * 12, 0, 127)
+  held[note] = t
+  inst:on({ midi = t, velocity = vel })
+end
+
+local function note_off(note)
+  local t = held[note] or util.clamp(note + octave * 12, 0, 127)
+  held[note] = nil
+  inst:off({ midi = t })
+end
 
 -- incoming MIDI: filtered by the selected channel ("all" or 1-16).
 -- note_on with velocity 0 is treated as note_off (running-status convention).
@@ -31,9 +47,9 @@ local function midi_event(data)
   local ch = params:get("midi_channel") -- 1 = all, n>1 = channel (n-1)
   if ch > 1 and msg.ch ~= (ch - 1) then return end
   if msg.type == "note_on" and msg.vel > 0 then
-    inst:on({ midi = msg.note, velocity = msg.vel })
+    note_on(msg.note, msg.vel)
   elseif msg.type == "note_off" or (msg.type == "note_on" and msg.vel == 0) then
-    inst:off({ midi = msg.note })
+    note_off(msg.note)
   end
 end
 
@@ -51,9 +67,9 @@ function init()
   -- /strata/noteon {note,vel(1-127)}  /strata/noteoff {note}  /strata/alloff
   osc.event = function(path, args)
     if path == "/strata/noteon" then
-      inst:on({ midi = args[1], velocity = args[2] })
+      note_on(args[1], args[2])
     elseif path == "/strata/noteoff" then
-      inst:off({ midi = args[1] })
+      note_off(args[1])
     elseif path == "/strata/alloff" then
       engine.all_off()
     end
@@ -117,17 +133,6 @@ function init()
   amp_poll = poll.set("amp_out", function(v) amp_level = v end)
   amp_poll.time = 1 / 15
   amp_poll:start()
-end
-
-function key(n, z)
-  local base = 60 + (octave * 12)
-  if z == 1 then
-    if n == 2 then inst:on({ midi = base, velocity = 100 })
-    elseif n == 3 then inst:on({ midi = base + 7, velocity = 100 }) end
-  else
-    if n == 2 then inst:off({ midi = base })
-    elseif n == 3 then inst:off({ midi = base + 7 }) end
-  end
 end
 
 function enc(n, d)
