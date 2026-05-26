@@ -4,6 +4,8 @@ Engine_Strata : CroneEngine {
   var <samples;  // List of Events: (buf: Buffer, root: Float)
   var <voices;   // Dictionary: midi note (Integer) -> Synth
   var <params;   // IdentityDictionary of global params
+  var <analyzer; // transient pitch-analysis Synth (or nil)
+  var <pitchBus; // control Bus holding the detected fundamental (Hz)
 
   *new { arg context, doneCallback;
     ^super.new(context, doneCallback);
@@ -16,6 +18,7 @@ Engine_Strata : CroneEngine {
       \attack -> 0.01, \decay -> 0.3, \sustain -> 0.9, \release -> 0.5,
       \cutoff -> 20000, \amp -> 0.7, \pan -> 0.0, \loop -> 0
     ];
+    pitchBus = Bus.control(context.server, 1);
 
     SynthDef(\strata_voice, {
       arg out, buf, rate = 1, vel = 1, amp = 0.7,
@@ -57,6 +60,7 @@ Engine_Strata : CroneEngine {
 
     // Free every buffer and stop all voices.
     this.addCommand(\clear, "", { arg msg;
+      if (analyzer.notNil) { analyzer.free; analyzer = nil; };
       voices.do { arg syn; syn.set(\gate, 0) };
       voices.clear;
       samples.do { arg s; s[\buf].free };
@@ -111,6 +115,30 @@ Engine_Strata : CroneEngine {
       this.addCommand(name, "f", { arg msg; params[name] = msg[1]; });
     };
 
+    // Update the loaded sample's root (MIDI, may be fractional) in place.
+    this.addCommand(\set_root, "f", { arg msg;
+      if (samples.size > 0) { samples[samples.size - 1][\root] = msg[1]; };
+    });
+
+    // Analyze the most-recent buffer's pitch into pitchBus; self-frees ~1.2s.
+    this.addCommand(\detect, "", { arg msg;
+      if (samples.size > 0) {
+        var b = samples[samples.size - 1][\buf];
+        if (analyzer.notNil) { analyzer.free; analyzer = nil; };
+        analyzer = {
+          var sig = PlayBuf.ar(2, b, BufRateScale.kr(b), loop: 1).sum;
+          var freq, hasFreq;
+          # freq, hasFreq = Pitch.kr(sig, initFreq: 220, minFreq: 40, maxFreq: 4000,
+              ampThreshold: 0.02, median: 7);
+          Out.kr(pitchBus.index, freq * (hasFreq > 0));
+          EnvGen.kr(Env.new([0, 0], [1.2]), doneAction: 2);
+        }.play(target: context.xg);
+      };
+    });
+
+    // Poll: detected fundamental (Hz); 0 when unvoiced/idle.
+    this.addPoll(\detected_hz, { In.kr(pitchBus) });
+
     // Output amplitude poll for UI metering.
     this.addPoll(\amp_out, {
       Amplitude.kr(In.ar(context.out_b.index, 2).sum);
@@ -118,7 +146,9 @@ Engine_Strata : CroneEngine {
   }
 
   free {
+    if (analyzer.notNil) { analyzer.free };
     voices.do { arg syn; syn.free };
     samples.do { arg s; s[\buf].free };
+    pitchBus.free;
   }
 }
