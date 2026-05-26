@@ -21,9 +21,23 @@ Engine_Strata : CroneEngine {
       arg out, buf, rate = 1, vel = 1, amp = 0.7,
           attack = 0.01, decay = 0.3, sustain = 0.9, release = 0.5,
           cutoff = 20000, pan = 0.0, loop = 0, gate = 1;
-      var sig, env;
+      var sig, env, rateScaled, numFrames, oneShot, phaseA, phaseB, posA, posB, loopSig;
       env = EnvGen.kr(Env.adsr(attack, decay, sustain, release), gate, doneAction: 2);
-      sig = PlayBuf.ar(2, buf, rate * BufRateScale.kr(buf), loop: loop);
+      rateScaled = rate * BufRateScale.kr(buf);
+      numFrames = BufFrames.kr(buf);
+      // one-shot: play the buffer through once
+      oneShot = PlayBuf.ar(2, buf, rateScaled, loop: 0);
+      // seamless loop: two read heads half a buffer apart, sin-windowed so each
+      // head is silent exactly at its own wrap seam; windows are sin/cos =>
+      // constant power (sin^2 + cos^2 = 1), no seam click and no level dip.
+      phaseA = Phasor.ar(0, rateScaled, 0, numFrames);
+      phaseB = (phaseA + (numFrames * 0.5)) % numFrames;
+      posA = phaseA / numFrames;
+      posB = phaseB / numFrames;
+      loopSig = (BufRd.ar(2, buf, phaseA, loop: 1, interpolation: 4) * (posA * pi).sin)
+              + (BufRd.ar(2, buf, phaseB, loop: 1, interpolation: 4) * (posB * pi).sin);
+      // loop is 0/1: pick one-shot or the seamless loop (multichannel-safe)
+      sig = (oneShot * (1 - loop)) + (loopSig * loop);
       sig = LPF.ar(sig, Lag.kr(cutoff, 0.05));
       sig = sig * env * amp * vel;
       sig = Balance2.ar(sig[0], sig[1], pan);
