@@ -21,6 +21,9 @@ local inst_name = ""
 local midi_devices = {}
 local single_sample_path = nil
 local held = {}
+local detected_hz = 440   -- current root reference (Hz): detection / filename / default
+local detected_latest = 0 -- latest value from the detected_hz poll
+local detect_poll
 
 local ROOT_DIR = _path.audio .. "strata/"
 local DEFAULT_SAMPLE = ROOT_DIR .. "kurzweil_strings/kurzweil_strings_78.wav"
@@ -60,6 +63,13 @@ local function setup_midi(port)
   m.event = midi_event
 end
 
+-- apply the effective root (detected + tune) to the engine, gaplessly.
+local function apply_root()
+  if single_sample_path then
+    engine.set_root(Strata.hz_to_midi(detected_hz + params:get("tune")))
+  end
+end
+
 function init()
   inst = Strata:new()
 
@@ -95,14 +105,9 @@ function init()
   params:add_option("loop", "loop", { "off", "on" }, 1)
   params:set_action("loop", function(v) inst:set("loop", v == 2 and 1 or 0) end)
 
-  -- single-sample mode: root frequency, then the file picker
-  params:add_control("sample_root_hz", "sample root",
-    controlspec.new(20, 8000, "exp", 0, 440, "Hz"))
-  params:set_action("sample_root_hz", function(hz)
-    if single_sample_path then
-      inst:load_sample(single_sample_path, Strata.hz_to_midi(hz))
-    end
-  end)
+  -- single-sample mode: relative tune (Hz), then the file picker
+  params:add_control("tune", "tune", controlspec.new(-200, 200, "lin", 0, 0, "Hz"))
+  params:set_action("tune", function() apply_root() end)
   params:add_file("sample", "sample", DEFAULT_SAMPLE)
   params:set_action("sample", function(file)
     local lf = type(file) == "string" and file:lower() or ""
@@ -110,11 +115,25 @@ function init()
          or lf:match("%.aiff$") or lf:match("%.flac$")) then return end
     single_sample_path = file
     inst_name = file:match("[^/]+$") or file
+    -- provisional root: filename note if present, else A4 (440)
     local note = Strata.parse_filename(inst_name)
-    if note then params:set("sample_root_hz", Strata.midi_to_hz(note), true) end
-    inst:load_sample(file, Strata.hz_to_midi(params:get("sample_root_hz")))
-    status = "ready"
+    detected_hz = note and Strata.midi_to_hz(note) or 440
+    params:set("tune", 0, true)  -- fresh sample: clear any manual offset
+    inst:load_sample(file, Strata.hz_to_midi(detected_hz))
+    status = "detecting..."
     redraw()
+    engine.detect()
+    clock.run(function()
+      clock.sleep(1.3)  -- analysis window (engine analyzer self-frees ~1.2s)
+      if detected_latest > 20 and detected_latest < 8000 then
+        detected_hz = detected_latest
+        status = "root ~" .. math.floor(detected_hz) .. " hz"
+      else
+        status = "ready"  -- kept provisional (filename / 440)
+      end
+      apply_root()
+      redraw()
+    end)
   end)
 
   -- MIDI input selection
@@ -133,6 +152,10 @@ function init()
   amp_poll = poll.set("amp_out", function(v) amp_level = v end)
   amp_poll.time = 1 / 15
   amp_poll:start()
+
+  detect_poll = poll.set("detected_hz", function(v) detected_latest = v end)
+  detect_poll.time = 1 / 10
+  detect_poll:start()
 end
 
 function enc(n, d)
@@ -151,7 +174,7 @@ function redraw()
   screen.move(0, 20)
   screen.text(inst_name ~= "" and inst_name or "(no sample)")
   screen.move(0, 30)
-  screen.text("root: " .. math.floor(params:get("sample_root_hz")) .. " hz")
+  screen.text("root: " .. math.floor(detected_hz + params:get("tune")) .. " hz")
   screen.move(0, 40)
   screen.text("octave: " .. octave)
   screen.move(0, 50)
